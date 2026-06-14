@@ -165,9 +165,9 @@
               <div class="feature-row no">❌ Unlimited drafts</div>
               <div class="feature-row no">❌ Priority support</div>
             </div>
-            <router-link to="/upgrade" class="btn btn-gold" style="width:100%;justify-content:center;margin-top:20px;">
-              ✨ Upgrade to Premium →
-            </router-link>
+            <button class="btn btn-gold" style="width:100%;justify-content:center;margin-top:20px;opacity:0.6;cursor:not-allowed;" disabled>
+              ✨ Upgrade to Premium (Coming Soon)
+            </button>
           </div>
 
           <!-- Premium plan -->

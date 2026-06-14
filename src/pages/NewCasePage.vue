@@ -264,7 +264,8 @@
             </transition>
           </div>
 
-          <!-- AI ANALYSIS CARD -->
+          <!-- AI ANALYSIS CARD (Temporarily disabled) -->
+          <!--
           <div class="ai-analysis-card">
             <div class="ai-ac-left">
               <div class="ai-ac-title">🤖 AI Case Analysis</div>
@@ -282,6 +283,7 @@
               >🤖 Analyze Case</button>
             </div>
           </div>
+          -->
 
           <!-- BOTTOM NAV -->
           <div class="bottom-nav-bar">
