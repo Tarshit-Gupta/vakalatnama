@@ -4,6 +4,7 @@ services:
     env: static
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
+    nodeVersion: 22.0.0
     routes:
       - type: rewrite
         source: /*
