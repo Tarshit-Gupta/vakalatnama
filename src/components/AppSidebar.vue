@@ -68,13 +68,11 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { supabase } from '../lib/supabase'
 
 defineProps({ mobileOpen: Boolean })
 defineEmits(['close'])
-const router = useRouter()
 const authStore = useAuthStore()
 
 const totalCases = ref(0)
@@ -138,8 +136,8 @@ onMounted(async () => {
 })
 
 async function handleLogout() {
+  // authStore.logout() handles redirect to /login automatically
   await authStore.logout()
-  router.push('/login')
 }
 </script>
 

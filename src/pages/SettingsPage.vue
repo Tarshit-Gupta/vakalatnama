@@ -6,12 +6,13 @@
     ═════════════════════════════════════════════ -->
     <Teleport to="body">
       <transition name="modal-fade">
-        <div v-if="showDeleteModal" class="modal-overlay" @click.self="showDeleteModal = false">
+        <div v-if="showDeleteModal" class="modal-overlay" @click.self="closeDeleteModal">
           <div class="modal-card danger-modal">
             <div class="modal-icon-danger">⚠️</div>
             <h3 class="modal-title-danger">Delete Account?</h3>
             <p class="modal-body-text">
-              This action cannot be undone. All your cases, clients, and drafts will be permanently deleted.
+              Your account will be <strong>permanently deleted after 24 hours</strong>. All your cases, clients, and drafts will be erased.
+              If you log back in within 24 hours, your deletion request will be <strong>automatically cancelled</strong>.
               Type <strong>DELETE</strong> below to confirm.
             </p>
             <input
@@ -22,7 +23,7 @@
               style="margin-top:16px;text-align:center;letter-spacing:0.1em;"
             />
             <div class="modal-actions-row">
-              <button class="btn btn-ghost" @click="showDeleteModal = false">Cancel</button>
+              <button class="btn btn-ghost" @click="closeDeleteModal">Cancel</button>
               <button
                 class="btn btn-danger"
                 :disabled="deleteConfirmText !== 'DELETE' || deletingAccount"
@@ -380,6 +381,38 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
+function closeDeleteModal() {
+  showDeleteModal.value = false
+  deleteConfirmText.value = ''  // Reset so the confirm field is never pre-filled on reopen
+}
+
+// ── Delete account (deferred — 24h grace period) ────────
+async function confirmDelete() {
+  if (deleteConfirmText.value !== 'DELETE') return
+  deletingAccount.value = true
+  try {
+    const uid = authStore.user?.id
+    if (!uid) throw new Error('No user')
+
+    // Stamp deletion_requested_at — the actual deletion runs server-side
+    // after 24h (or immediately if they don't log back in to cancel it).
+    const { error } = await supabase
+      .from('advocates')
+      .update({ deletion_requested_at: new Date().toISOString() })
+      .eq('id', uid)
+
+    if (error) throw error
+
+    showToast('Account deletion requested. Our team will process it within 24 hours.', '📩')
+    // authStore.logout() handles redirect to /login automatically
+    await authStore.logout()
+  } catch (err) {
+    console.error('[Settings] confirmDelete:', err.message)
+    deletingAccount.value = false
+    showToast('Something went wrong. Please try again.', '❌')
+  }
+}
+
 // ── Save profile ──────────────────────────────────
 async function saveProfile() {
   const uid = authStore.user?.id
@@ -415,27 +448,15 @@ async function saveProfile() {
 async function handleLogout() {
   loggingOut.value = true
   try {
+    // authStore.logout() handles redirect to /login automatically
     await authStore.logout()
-    router.push('/login')
   } catch {
+    loggingOut.value = false
+  } finally {
     loggingOut.value = false
   }
 }
 
-// ── Delete account ────────────────────────────────
-async function confirmDelete() {
-  if (deleteConfirmText.value !== 'DELETE') return
-  deletingAccount.value = true
-  try {
-    // Phase 1: log out only — full deletion handled backend in later phase
-    showToast('Account deletion requested. Our team will process it within 24 hours.', '📩')
-    await authStore.logout()
-    router.push('/login')
-  } catch {
-    deletingAccount.value = false
-    showToast('Something went wrong. Please try again.', '❌')
-  }
-}
 </script>
 
 <style scoped>

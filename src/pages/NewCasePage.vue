@@ -6,7 +6,7 @@
       <div class="progress-header">
         <div class="ph-top">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <h2>New Case</h2>
+            <h2>{{ editCaseId ? 'Edit Case' : 'New Case' }}</h2>
             <div class="step-indicator" style="font-size: 0.85rem; font-weight: 600; color: var(--accent-gold); background: rgba(201,168,76, 0.1); padding: 4px 12px; border-radius: 999px; border: 1px solid rgba(201,168,76, 0.2);">{{ currentSlide }} / 2</div>
           </div>
           <div class="title-underline"></div>
@@ -289,7 +289,7 @@
           <div class="bottom-nav-bar">
             <button class="btn-back-bottom" @click="goToSlide1">← Back</button>
             <span class="premium-text">✨ Unlimited</span>
-            <button class="btn-save" @click="saveCase" :disabled="isLoading">{{ isLoading ? 'Saving...' : 'Save & Continue →' }}</button>
+            <button class="btn-save" @click="saveCase" :disabled="isLoading">{{ isLoading ? (editCaseId ? 'Updating...' : 'Saving...') : (editCaseId ? 'Update Case →' : 'Save & Continue →') }}</button>
           </div>
 
         </div>
@@ -318,14 +318,15 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, inject } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, computed, inject, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import AppLayout from '../components/AppLayout.vue'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/auth'
 import { getAIAssist } from '../lib/aiAssist'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 const showToast = inject('showToast')
 const toast = {
@@ -350,6 +351,7 @@ function scrollCards(refName, direction) {
 }
 
 // Reactive Form State
+const editCaseId = ref(null)  // set if we are editing an existing case
 const caseForm = reactive({
   primary_role: 'petitioner',
   
@@ -395,6 +397,70 @@ const caseForm = reactive({
   case_type: '',
   court_level: '',
   additional_info: ''
+})
+
+// Edit mode: load existing case data on mount
+onMounted(async () => {
+  const editId = route.query.edit
+  if (!editId) return
+
+  editCaseId.value = editId
+
+  try {
+    // Fetch case with client data
+    const { data: c, error } = await supabase
+      .from('cases')
+      .select('*, clients(*)')
+      .eq('id', editId)
+      .single()
+
+    if (error) throw error
+
+    // Pre-fill client fields
+    const cl = c.clients || {}
+    caseForm.client.full_name   = cl.full_name || cl.name || ''
+    caseForm.client.father_name = cl.father_name || ''
+    caseForm.client.aadhar      = cl.aadhar || ''
+    caseForm.client.phone       = cl.phone || ''
+    caseForm.client.address     = cl.address || ''
+    caseForm.client.city        = cl.city || ''
+    caseForm.client.state       = cl.state || ''
+    caseForm.client.pin         = cl.pin || ''
+
+    // Pre-fill opposite party
+    caseForm.opposite.full_name   = c.opposite_party_name || ''
+    caseForm.opposite.phone       = c.opposite_party_phone || ''
+    caseForm.opposite.address     = c.opposite_party_address || ''
+
+    // Pre-fill FIR
+    caseForm.fir_filed           = c.fir_filed ?? null
+    caseForm.fir.number          = c.fir_number || ''
+    caseForm.fir.police_station  = c.fir_police_station || ''
+    caseForm.fir.district        = c.fir_district || ''
+    caseForm.fir.date            = c.fir_date || ''
+    caseForm.fir.sections        = c.fir_sections || ''
+
+    // Pre-fill case details
+    caseForm.primary_role        = c.primary_role || 'petitioner'
+    caseForm.incident_date       = c.incident_date || ''
+    caseForm.incident_time       = c.incident_time || ''
+    caseForm.incident_place      = c.incident_place || ''
+    caseForm.incident_district   = c.incident_district || ''
+    caseForm.incident_state      = c.incident_state || ''
+    caseForm.evidence_available  = Array.isArray(c.evidence_available) ? [...c.evidence_available] : []
+    caseForm.facts_text          = c.facts_text || ''
+    caseForm.relief_sought       = c.relief_sought || ''
+    caseForm.applicable_acts     = Array.isArray(c.applicable_acts) ? [...c.applicable_acts] : []
+    caseForm.applicable_acts_other = c.applicable_acts_other || ''
+    caseForm.case_type           = c.case_type || ''
+    caseForm.court_level         = c.court_level || ''
+    caseForm.additional_info     = c.additional_info || ''
+
+    toast.success('Case loaded for editing ✏️')
+  } catch (err) {
+    console.error('Failed to load case for editing:', err)
+    toast.error('Could not load case details. Please try again.')
+  }
 })
 
 // Computed
@@ -464,6 +530,24 @@ const ignoreExistingClient = () => {
 }
 
 const goToSlide2 = () => {
+  // Validate required Slide 1 fields before proceeding
+  const name = caseForm.client.full_name.trim()
+  const phone = caseForm.client.phone.replace(/\D/g, '')
+  const oppName = caseForm.opposite.full_name.trim()
+
+  if (!name) {
+    toast.error('Client Full Name is required')
+    return
+  }
+  if (phone.length !== 10) {
+    toast.error('Client Phone must be exactly 10 digits')
+    return
+  }
+  if (!oppName) {
+    toast.error('Opposite Party Full Name is required')
+    return
+  }
+
   slideTransitionName.value = 'slide-left'
   currentSlide.value = 2
   window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -646,20 +730,58 @@ const runAIAnalysis = async () => {
 
 const isLoading = ref(false)
 const saveCase = async () => {
+  // ── Slide 1 validation ────────────────────────────────────
+  const clientName = caseForm.client.full_name.trim()
+  const clientPhone = caseForm.client.phone.replace(/\D/g, '')
+
+  if (!clientName) {
+    toast.error('Client Full Name is required')
+    goToSlide1()
+    return
+  }
+  if (clientPhone.length !== 10) {
+    toast.error('Client Phone must be exactly 10 digits')
+    goToSlide1()
+    return
+  }
+  if (!caseForm.client.address.trim()) {
+    toast.error('Client Address is required')
+    goToSlide1()
+    return
+  }
+  if (!caseForm.client.city.trim()) {
+    toast.error('Client City is required')
+    goToSlide1()
+    return
+  }
+
+  // ── Slide 2 validation ────────────────────────────────────
+  if (!caseForm.incident_date) {
+    toast.error('Incident Date is required')
+    return
+  }
+  if (!caseForm.incident_place.trim()) {
+    toast.error('Incident Place is required')
+    return
+  }
+  if (!caseForm.incident_state.trim()) {
+    toast.error('Incident State is required')
+    return
+  }
   if (factsLength.value === 0) {
-    alert("Please enter Facts of the Case")
+    toast.error('Please enter Facts of the Case')
     return
   }
   if (!caseForm.case_type) {
-    alert("Please select Case Type")
+    toast.error('Please select Case Type')
     return
   }
   if (!caseForm.court_level) {
-    alert("Please select Court Level")
+    toast.error('Please select Court Level')
     return
   }
   if (!caseForm.relief_sought.trim()) {
-    alert("Please enter Relief Sought")
+    toast.error('Please enter Relief Sought')
     return
   }
 
@@ -667,6 +789,65 @@ const saveCase = async () => {
   
   try {
     const uid = authStore.user.id
+    
+    // ─── EDIT MODE: Update existing case ───
+    if (editCaseId.value) {
+      // Update client
+      const { data: existingClient } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('advocate_id', uid)
+        .eq('phone', caseForm.client.phone.replace(/\D/g, ''))
+        .maybeSingle()
+
+      if (existingClient) {
+        await supabase.from('clients').update({
+          name: caseForm.client.full_name,
+          full_name: caseForm.client.full_name,
+          father_name: caseForm.client.father_name,
+          aadhar: caseForm.client.aadhar,
+          address: caseForm.client.address,
+          city: caseForm.client.city,
+          state: caseForm.client.state,
+          pin: caseForm.client.pin,
+        }).eq('id', existingClient.id)
+      }
+
+      // Update case
+      const { error: updateError } = await supabase.from('cases').update({
+        primary_role: caseForm.primary_role,
+        plaintiff_name: caseForm.primary_role === 'petitioner' ? caseForm.client.full_name : caseForm.opposite.full_name,
+        defendant_name: caseForm.primary_role === 'defendant' ? caseForm.client.full_name : caseForm.opposite.full_name,
+        opposite_party_name: caseForm.opposite.full_name,
+        opposite_party_phone: caseForm.opposite.phone,
+        opposite_party_address: caseForm.opposite.address,
+        fir_filed: caseForm.fir_filed,
+        fir_number: caseForm.fir_filed ? caseForm.fir.number : null,
+        fir_police_station: caseForm.fir_filed ? caseForm.fir.police_station : null,
+        fir_district: caseForm.fir_filed ? caseForm.fir.district : null,
+        fir_date: caseForm.fir_filed ? caseForm.fir.date : null,
+        fir_sections: caseForm.fir_filed ? caseForm.fir.sections : null,
+        incident_date: caseForm.incident_date,
+        incident_time: caseForm.incident_time,
+        incident_place: caseForm.incident_place,
+        incident_district: caseForm.incident_district,
+        incident_state: caseForm.incident_state,
+        evidence_available: caseForm.evidence_available,
+        facts_text: caseForm.facts_text,
+        relief_sought: caseForm.relief_sought,
+        applicable_acts: caseForm.applicable_acts,
+        applicable_acts_other: caseForm.applicable_acts_other,
+        case_type: caseForm.case_type,
+        court_level: caseForm.court_level,
+        additional_info: caseForm.additional_info,
+      }).eq('id', editCaseId.value)
+
+      if (updateError) throw updateError
+
+      toast.success('Case updated successfully! ✅')
+      router.push(`/case-review/${editCaseId.value}`)
+      return
+    }
     
     // ─── STEP 1: Generate Client ID ───
     const firstName = caseForm.client.full_name
@@ -698,8 +879,13 @@ const saveCase = async () => {
         .from('clients')
         .update({
           name: caseForm.client.full_name,
+          full_name: caseForm.client.full_name,
+          father_name: caseForm.client.father_name,
+          aadhar: caseForm.client.aadhar,
           address: caseForm.client.address,
-          city: caseForm.client.city
+          city: caseForm.client.city,
+          state: caseForm.client.state,
+          pin: caseForm.client.pin,
         })
         .eq('id', existingClient.id)
 
@@ -711,9 +897,14 @@ const saveCase = async () => {
           .insert({
             advocate_id: uid,
             name: caseForm.client.full_name,
+            full_name: caseForm.client.full_name,
+            father_name: caseForm.client.father_name,
             phone: caseForm.client.phone,
+            aadhar: caseForm.client.aadhar,
             address: caseForm.client.address,
-            city: caseForm.client.city
+            city: caseForm.client.city,
+            state: caseForm.client.state,
+            pin: caseForm.client.pin,
           })
           .select()
           .single()
@@ -794,10 +985,9 @@ const saveCase = async () => {
     // ─── STEP 6: Navigate ───
     toast.success('Case saved successfully! ✅')
     router.push(`/case-review/${savedCase.id}`)
-
   } catch (err) {
     console.error('Save error:', err)
-    toast.error('Failed to save case. Please try again.')
+    toast.error(err?.message || 'Failed to save case. Please try again.')
   } finally {
     isLoading.value = false
   }

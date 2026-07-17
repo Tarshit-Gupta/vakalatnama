@@ -160,10 +160,10 @@ const uniqueCaseTypes = computed(() => {
 
 // ── Status badge class ────────────────────────────
 function statusBadge(status) {
-  if (status === 'Drafted' || status === 'Consented') return 'badge-success'
-  if (status === 'In Progress')                       return 'badge-warning'
-  if (status === 'Pending')                           return 'badge-danger'
-  if (status === 'Consented')                         return 'badge-consented'
+  if (status === 'Consented')   return 'badge-consented'  // purple/indigo
+  if (status === 'Drafted')     return 'badge-success'     // green
+  if (status === 'In Progress') return 'badge-warning'     // yellow
+  if (status === 'Pending')     return 'badge-danger'      // red
   return 'badge-muted'
 }
 

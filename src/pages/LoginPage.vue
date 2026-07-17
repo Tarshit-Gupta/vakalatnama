@@ -25,10 +25,12 @@
 
       <div class="divider"></div>
 
-      <h1 style="font-size: 1.375rem; margin-bottom: 8px;">{{ isSignup ? 'Create Account' : 'Welcome back' }}</h1>
-      <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 28px;">
-        {{ isSignup ? 'Register as an advocate to get started' : 'Sign in to your account to continue drafting' }}
-      </p>
+      <div class="login-header">
+        <h2 class="login-title">{{ isResetPassword ? 'Reset Password' : (isSignup ? 'Create Account' : 'Welcome Back') }}</h2>
+        <p class="login-subtitle">
+          {{ isResetPassword ? 'Enter the OTP sent to your email to reset your password' : (isSignup ? 'Register as an advocate to get started' : 'Sign in to your account to continue drafting') }}
+        </p>
+      </div>
 
       <!-- Error message -->
       <div v-if="errorMessage" class="error-banner">
@@ -37,10 +39,10 @@
       </div>
 
       <!-- Form -->
-      <form @submit.prevent="handleSubmit" style="display:flex;flex-direction:column;gap:18px;">
+      <form @submit.prevent="isResetPassword ? handleResetSubmit() : handleSubmit()" style="display:flex;flex-direction:column;gap:18px;">
 
         <!-- Signup-only fields -->
-        <template v-if="isSignup">
+        <template v-if="isSignup && !isResetPassword">
           <div class="form-group">
             <label class="form-label" for="full-name">Full Name</label>
             <input
@@ -96,11 +98,12 @@
               placeholder="advocate@example.com"
               required
               autocomplete="email"
+              :disabled="isResetPassword"
             />
           </div>
         </div>
 
-        <div class="form-group">
+        <div class="form-group" v-if="!isResetPassword">
           <label class="form-label" for="password">Password</label>
           <div style="position:relative;">
             <div class="input-icon">
@@ -137,8 +140,37 @@
           </div>
         </div>
 
-        <div v-if="!isSignup" style="display:flex;justify-content:flex-end;">
-          <a href="#" style="font-size:0.8125rem;">Forgot password?</a>
+        <template v-if="isResetPassword">
+          <div class="form-group">
+            <label class="form-label" for="otp">One-Time Password (OTP)</label>
+            <input
+              id="otp"
+              v-model="otp"
+              type="text"
+              class="form-input"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="newPassword">New Password</label>
+            <input
+              id="newPassword"
+              v-model="newPassword"
+              type="password"
+              class="form-input"
+              placeholder="Enter new password"
+              required
+            />
+          </div>
+        </template>
+
+        <div v-if="!isSignup && !isResetPassword" style="display:flex;justify-content:flex-end;">
+          <button
+            type="button"
+            class="forgot-link"
+            @click="handleForgotPassword"
+            :disabled="forgotSending"
+          >{{ forgotSending ? 'Sending OTP...' : 'Forgot password?' }}</button>
         </div>
 
         <button
@@ -154,13 +186,18 @@
             <polyline points="10 17 15 12 10 7"/>
             <line x1="15" y1="12" x2="3" y2="12"/>
           </svg>
-          {{ loading ? (isSignup ? 'Creating account...' : 'Signing in...') : (isSignup ? 'Create Account' : 'Login') }}
+          {{ loading ? (isResetPassword ? 'Resetting...' : (isSignup ? 'Creating account...' : 'Signing in...')) : (isResetPassword ? 'Set New Password' : (isSignup ? 'Create Account' : 'Login')) }}
         </button>
       </form>
 
-      <p style="text-align:center;margin-top:24px;color:var(--text-muted);font-size:0.875rem;">
+      <p v-if="!isResetPassword" style="text-align:center;margin-top:24px;color:var(--text-muted);font-size:0.875rem;">
         {{ isSignup ? 'Already have an account?' : "Don't have an account?" }}
         <a href="#" style="margin-left:4px;" @click.prevent="toggleMode">{{ isSignup ? 'Sign in' : 'Sign up' }}</a>
+      </p>
+
+      <p v-if="isResetPassword" style="text-align:center;margin-top:24px;color:var(--text-muted);font-size:0.875rem;">
+        Remembered your password?
+        <a href="#" style="margin-left:4px;" @click.prevent="isResetPassword = false; errorMessage = ''">Back to Login</a>
       </p>
 
       <!-- Trust badges -->
@@ -192,10 +229,63 @@ const loading = ref(false)
 const showPassword = ref(false)
 const isSignup = ref(false)
 const errorMessage = ref('')
+const forgotSending = ref(false)
+const isResetPassword = ref(false)
+const otp = ref('')
+const newPassword = ref('')
 
 function toggleMode() {
   isSignup.value = !isSignup.value
   errorMessage.value = ''
+}
+
+async function handleForgotPassword() {
+  const trimmedEmail = email.value.trim()
+  if (!trimmedEmail) {
+    errorMessage.value = 'Please enter your email address first, then click Forgot password.'
+    return
+  }
+  forgotSending.value = true
+  errorMessage.value = ''
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail)
+    if (error) throw error
+    errorMessage.value = ''
+    isResetPassword.value = true
+    // Show success in the error area reusing the same UI slot with a success style
+    alert(`OTP sent to ${trimmedEmail}. Please check your inbox and enter it below.`)
+  } catch (err) {
+    errorMessage.value = err.message || 'Failed to send reset email. Please try again.'
+  } finally {
+    forgotSending.value = false
+  }
+}
+
+async function handleResetSubmit() {
+  errorMessage.value = ''
+  loading.value = true
+  try {
+    // 1. Verify OTP
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      email: email.value.trim(),
+      token: otp.value.trim(),
+      type: 'recovery'
+    })
+    if (verifyError) throw verifyError
+
+    // 2. Update password
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: newPassword.value
+    })
+    if (updateError) throw updateError
+
+    alert('Password updated successfully! Redirecting to dashboard...')
+    router.push('/dashboard')
+  } catch (err) {
+    errorMessage.value = err.message || 'Failed to reset password. Please check your OTP and try again.'
+  } finally {
+    loading.value = false
+  }
 }
 
 async function handleSubmit() {
@@ -234,25 +324,30 @@ async function handleLogin() {
 
 async function handleSignup() {
   try {
-    // Step 1: Create auth user
+    // Pass name, bar_council_no, city as metadata so the DB trigger can use them
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: email.value,
       password: password.value,
+      options: {
+        data: {
+          name: fullName.value,
+          bar_council_no: barCouncilNo.value,
+          city: city.value,
+        }
+      }
     })
     if (signUpError) return { error: signUpError.message }
 
     const userId = data.user?.id
     if (!userId) return { error: 'Signup failed — no user ID returned.' }
 
-    // Step 2: Insert advocate profile row
-    const { error: insertError } = await supabase.from('advocates').insert({
-      id: userId,
-      name: fullName.value,
-      email: email.value,
-      bar_council_no: barCouncilNo.value,
-      city: city.value,
-    })
-    if (insertError) return { error: insertError.message }
+    if (!data.session) {
+      return { error: 'Signup failed. Please try again or contact support.' }
+    }
+
+    // The DB trigger (handle_new_user) automatically creates the advocates row.
+    // Wait briefly for the trigger to complete before fetching the advocate profile.
+    await new Promise(r => setTimeout(r, 500))
 
     await authStore.setAdvocate(userId)
     return {}
@@ -260,6 +355,7 @@ async function handleSignup() {
     return { error: err.message }
   }
 }
+
 </script>
 
 <style scoped>
@@ -339,6 +435,19 @@ async function handleSignup() {
   transition: color var(--transition);
 }
 .password-toggle:hover { color: var(--accent-gold); }
+.forgot-link {
+  background: none;
+  border: none;
+  color: var(--accent-gold);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  opacity: 0.8;
+  transition: opacity var(--transition);
+}
+.forgot-link:hover { opacity: 1; }
 .login-trust {
   display: flex;
   flex-wrap: wrap;

@@ -16,7 +16,7 @@
         </div>
 
         <!-- Global Search Bar (Center) -->
-        <div class="search-container">
+        <div class="search-container" ref="searchContainerRef">
           <div class="search-input-wrapper">
             <svg class="search-input-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input
@@ -53,7 +53,7 @@
                 v-for="cl in searchResults.clients"
                 :key="cl.id"
                 class="result-item"
-                @click="goToResult('client', cl.id)"
+                @click="goToResult('client', cl.id, cl.name)"
               >
                 <span class="result-icon">👤</span>
                 <div class="result-meta">
@@ -199,13 +199,14 @@ async function performSearch() {
   }
 }
 
-function goToResult(type, id) {
+function goToResult(type, id, name) {
   showResults.value = false
   searchQuery.value = ''
   if (type === 'case') {
     router.push(`/case-detail/${id}`)
   } else if (type === 'client') {
-    router.push('/clients')
+    // Navigate to clients page with search pre-filled so the client is visible
+    router.push({ path: '/clients', query: { search: name } })
   }
 }
 
@@ -228,14 +229,9 @@ async function fetchUsage() {
   if (!uid) return
 
   try {
-    // Plan
-    const { data: adv } = await supabase
-      .from('advocates')
-      .select('plan')
-      .eq('id', uid)
-      .maybeSingle()
-
-    isFreePlan.value = !adv?.plan || adv.plan.toLowerCase() !== 'premium'
+    // Read plan from the already-fetched authStore.advocate (avoids an extra DB round-trip per page navigation)
+    const plan = authStore.advocate?.plan || 'free'
+    isFreePlan.value = plan.toLowerCase() !== 'premium'
 
     if (isFreePlan.value) {
       const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
@@ -253,17 +249,15 @@ async function fetchUsage() {
   }
 }
 
+// Template refs for click-outside detection
+const searchContainerRef = ref(null)
+
 // Click outside handling
 function handleClickOutside(e) {
   // Search
-  const searchContainer = document.querySelector('.search-container')
-  if (searchContainer && !searchContainer.contains(e.target)) {
+  // Search — use Vue template ref instead of fragile querySelector
+  if (searchContainerRef.value && !searchContainerRef.value.contains(e.target)) {
     showResults.value = false
-  }
-  // Notifications
-  const notificationContainer = document.querySelector('.notification-container')
-  if (notificationContainer && !notificationContainer.contains(e.target)) {
-    showNotifications.value = false
   }
 }
 

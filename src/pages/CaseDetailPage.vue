@@ -594,6 +594,11 @@ async function confirmRegenerate() {
 
 // ── Export ────────────────────────────────────────────────────────
 async function handleExport() {
+  // Guard: ensure session is still active
+  if (!authStore.user?.id) {
+    showToast('Session expired. Please login again.', '⚠️')
+    return
+  }
   if (!consentData.value) {
     showToast('Please complete the consent process first. Redirecting...', '⚠️')
     router.push(`/consent/${caseData.value.id}`)
@@ -616,7 +621,7 @@ async function handleExport() {
     showToast('Document downloaded successfully!', '📄')
 
     await supabase.from('audit_logs').insert({
-      advocate_id: authStore.user.id,
+      advocate_id: authStore.user?.id ?? null,
       case_id:     route.params.id,
       action:      'document_exported',
       metadata: {

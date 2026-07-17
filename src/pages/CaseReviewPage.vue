@@ -386,7 +386,7 @@ function formatDate(dateStr) {
 
 function confirmGoBack() {
   showBackModal.value = false
-  router.push('/new-case')
+  router.push(`/new-case?edit=${route.params.id}`)
 }
 
 // ── Loading overlay message rotator ─────────────────────────────

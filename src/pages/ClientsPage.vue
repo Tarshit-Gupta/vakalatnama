@@ -45,9 +45,7 @@
           v-for="client in filteredClients"
           :key="client.id"
           class="card card-hover client-card"
-          :class="{ 'inactive-card': !isClientActive(client.id) }"
-          @click="toggleClientStatus(client.id)"
-          style="cursor: pointer;"
+          @click.stop
         >
           <!-- Card header -->
           <div class="client-card-header">
@@ -61,9 +59,9 @@
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                 </button>
               </div>
-              <div class="active-badge" :class="{ 'inactive-badge': !isClientActive(client.id) }">
-                <span :class="isClientActive(client.id) ? 'active-dot' : 'inactive-dot'"></span>
-                {{ isClientActive(client.id) ? 'Active' : 'Inactive' }}
+              <div class="active-badge" :class="{ 'inactive-badge': client.totalCases === 0 }">
+                <span :class="client.totalCases > 0 ? 'active-dot' : 'inactive-dot'"></span>
+                {{ client.totalCases > 0 ? 'Active' : 'No Cases' }}
               </div>
             </div>
           </div>
@@ -184,12 +182,14 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, reactive, inject } from 'vue'
+import { useRoute } from 'vue-router'
 import AppLayout from '../components/AppLayout.vue'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/auth'
 
 const authStore = useAuthStore()
 const showToast = inject('showToast')
+const route = useRoute()
 
 const loading      = ref(true)
 const searchQuery  = ref('')
@@ -203,7 +203,6 @@ const modalErrors = reactive({})
 
 const isEditing = ref(false)
 const editingClientId = ref(null)
-const inactiveClients = ref(new Set())
 
 // ── Helpers ───────────────────────────────────────
 function getInitials(name = '') {
@@ -264,16 +263,9 @@ async function fetchClients() {
   }
 }
 
-// ── Active Status Mock ────────────────────────────────
-function isClientActive(id) {
-  return !inactiveClients.value.has(id)
-}
-function toggleClientStatus(id) {
-  if (inactiveClients.value.has(id)) {
-    inactiveClients.value.delete(id)
-  } else {
-    inactiveClients.value.add(id)
-  }
+// ── Active Status — based on whether client has any cases ──────────────
+function isClientActive(client) {
+  return client.totalCases > 0
 }
 
 // ── Edit & Delete ─────────────────────────────────
@@ -362,7 +354,13 @@ async function saveClient() {
   }
 }
 
-onMounted(fetchClients)
+onMounted(async () => {
+  await fetchClients()
+  // Pre-fill search if navigated from global search (e.g. AppLayout client search result)
+  if (route.query.search) {
+    searchQuery.value = String(route.query.search)
+  }
+})
 </script>
 
 <style scoped>

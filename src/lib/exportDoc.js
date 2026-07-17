@@ -32,9 +32,18 @@ export async function exportCaseAsDoc(caseData, laws, draftText, advocateData, d
   const nowIST = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
 
   // ── Helper: isAllCaps heading line ──────────────────────────────
+  // A line is a heading if it is all-uppercase, at least 10 characters long,
+  // under 80 characters, and contains at least one space (minimum 2 words).
+  // This prevents short legal abbreviations (IPC, FIR, U/S, AT, IN) from being
+  // misformatted as centred bold headings in the Word document.
   function isHeadingLine(line) {
     const t = line.trim()
-    return t.length > 0 && t.length < 80 && t === t.toUpperCase()
+    return (
+      t.length >= 10 &&
+      t.length < 80 &&
+      t === t.toUpperCase() &&
+      t.includes(' ')        // must be at least 2 words
+    )
   }
 
   const doc = new Document({

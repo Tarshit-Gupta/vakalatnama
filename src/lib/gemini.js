@@ -1,3 +1,11 @@
+/**
+ * gemini.js — Direct Gemini API fallback utility.
+ *
+ * NOTE: The primary production path for draft generation goes through the
+ * Supabase Edge Function (src/lib/generateDraft.js → /functions/v1/generate-draft).
+ * This file is a direct-call fallback and is NOT currently used in any page.
+ * Keep it updated but prefer the edge function route for rate-limiting and security.
+ */
 export async function generateLegalDraft(caseData) {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY
   if (!apiKey || apiKey === 'REPLACE_WITH_YOUR_KEY') {
@@ -39,7 +47,7 @@ Respond ONLY in this exact JSON format, no extra text, no markdown:
       "explanation": "Cheating and dishonestly inducing delivery of property"
     }
   ],
-  "draft_text": "IN THE COURT OF...\n\nfull petition here..."
+  "draft_text": "IN THE COURT OF...\\n\\nfull petition here..."
 }
 
 The draft_text must include:
@@ -55,8 +63,9 @@ The draft_text must include:
 
   let response
   try {
+    // Model: gemini-2.0-flash-lite (valid as of 2025 — was incorrectly set to non-existent gemini-3.1-flash-lite)
     response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
