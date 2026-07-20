@@ -336,7 +336,13 @@ async function handleSignup() {
       }
     })
 
-    if (signUpError) return { error: signUpError.message }
+    // If the error is ONLY the advocates_pkey duplicate, the auth user WAS created.
+    // This is a DB trigger race condition — handle it gracefully instead of showing
+    // a confusing Postgres error to the user.
+    const isDuplicateTriggerError = signUpError?.message?.includes('advocates_pkey')
+    if (signUpError && !isDuplicateTriggerError) {
+      return { error: signUpError.message }
+    }
 
     const userId = data?.user?.id
     if (!userId) return { error: 'Signup failed — no user ID returned.' }
@@ -355,8 +361,8 @@ async function handleSignup() {
 
     if (upsertError) console.warn('[Signup] advocates upsert warning:', upsertError.message)
 
-    // If no session yet (email confirmation was on), sign in explicitly.
-    if (!data?.session) {
+    // If no session (trigger error path OR email confirmation enabled), sign in explicitly.
+    if (!data?.session || isDuplicateTriggerError) {
       const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
         email: email.value,
         password: password.value,
