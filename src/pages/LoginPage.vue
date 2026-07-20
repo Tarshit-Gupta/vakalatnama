@@ -324,7 +324,6 @@ async function handleLogin() {
 
 async function handleSignup() {
   try {
-    // Pass name, bar_council_no, city as metadata so the DB trigger can use them
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: email.value,
       password: password.value,
@@ -336,18 +335,36 @@ async function handleSignup() {
         }
       }
     })
+
     if (signUpError) return { error: signUpError.message }
 
-    const userId = data.user?.id
+    const userId = data?.user?.id
     if (!userId) return { error: 'Signup failed — no user ID returned.' }
 
-    if (!data.session) {
-      return { error: 'Signup failed. Please try again or contact support.' }
-    }
+    // App code explicitly owns the advocates row creation.
+    // The DB trigger is a backup — this upsert is the authoritative write.
+    // ignoreDuplicates: true means if the trigger already created the row, we skip safely.
+    const { error: upsertError } = await supabase.from('advocates').upsert({
+      id: userId,
+      name: fullName.value,
+      email: email.value,
+      bar_council_no: barCouncilNo.value,
+      city: city.value,
+      plan: 'free'
+    }, { onConflict: 'id', ignoreDuplicates: true })
 
-    // The DB trigger (handle_new_user) automatically creates the advocates row.
-    // Wait briefly for the trigger to complete before fetching the advocate profile.
-    await new Promise(r => setTimeout(r, 500))
+    if (upsertError) console.warn('[Signup] advocates upsert warning:', upsertError.message)
+
+    // If no session yet (email confirmation was on), sign in explicitly.
+    if (!data?.session) {
+      const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+        email: email.value,
+        password: password.value,
+      })
+      if (loginError) return { error: loginError.message }
+      await authStore.setAdvocate(loginData.user.id)
+      return {}
+    }
 
     await authStore.setAdvocate(userId)
     return {}
